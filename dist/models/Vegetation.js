@@ -1,0 +1,27 @@
+import * as T from '../vendor/three.module.js';
+import {seeded,mesh,batchStatic} from './ModelUtils.js';
+import {plantable,terrainHeight} from './Terrain.js';
+export function vegetationPoints(seed=5107,count=14500){const random=seeded(seed),points=[];for(let i=0;i<count;i++){const x=-253+random()*338,z=34+random()*125;if(plantable(x,z)&&random()>.25+.22*Math.sin(x*.11)*Math.cos(z*.13))points.push({x,y:terrainHeight(x,z),z,scale:.55+random()*.8,angle:random()*Math.PI*2,tint:random()});}return points;}
+export function grassGeometry(){const pos=[],uv=[],idx=[];for(let b=0;b<7;b++){const a=b*2.39996,bx=Math.sin(a)*.15,bz=Math.cos(a)*.15,height=.45+(b%3)*.13,base=pos.length/3;for(let j=0;j<=3;j++){const t=j/3,w=.045*(1-t)+.002;for(const side of [-1,1]){pos.push(bx+Math.cos(a)*w*side+Math.sin(a)*t*t*.16,height*t,bz+Math.sin(a)*w*side+Math.cos(a)*t*t*.16);uv.push(side<0?0:1,t);}}for(let j=0;j<3;j++){const v=base+j*2;idx.push(v,v+1,v+2,v+1,v+3,v+2);}}const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(pos,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();return g;}
+export const windTransform=`
+vec3 vegetationOrigin=instanceMatrix[3].xyz;
+float vegetationBend=sin(vegetationOrigin.x*.14+vegetationOrigin.z*.11+uVegetationTime*1.3)*.10+sin(vegetationOrigin.z*.31+uVegetationTime*.8)*.04;
+transformed.x+=vegetationBend*position.y*position.y;
+transformed.z+=vegetationBend*.45*position.y*position.y;
+`;
+export function applyWind(material,uniform){material.onBeforeCompile=shader=>{shader.uniforms.uVegetationTime=uniform;shader.vertexShader='uniform float uVegetationTime;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n#ifdef USE_INSTANCING\n'+windTransform+'\n#endif');};material.customProgramCacheKey=()=> 'coastal-wind-v2';}
+export class Vegetation {
+ constructor(parent,materials){this.group=new T.Group();this.group.name='CoastalVegetation';parent.add(this.group);this.chunks=[];this.time={value:0};this.timer=0;this.quality='Média';
+ const grass=materials.get('grass',0x60703c,{side:T.DoubleSide,roughness:.96});applyWind(grass,this.time);this.grassGeometry=grassGeometry();const points=vegetationPoints(),bins=new Map();
+ for(const p of points){const key=Math.floor(p.x/24)+','+Math.floor(p.z/24);if(!bins.has(key))bins.set(key,[]);bins.get(key).push(p);}const object=new T.Object3D(),color=new T.Color();
+ for(const ps of bins.values()){const im=new T.InstancedMesh(this.grassGeometry,grass,ps.length);im.receiveShadow=true;im.castShadow=false;for(let i=0;i<ps.length;i++){const p=ps[i];object.position.set(p.x,p.y,p.z);object.rotation.set(0,p.angle,0);object.scale.setScalar(p.scale);object.updateMatrix();im.setMatrixAt(i,object.matrix);color.setRGB(.68+p.tint*.28,.77+p.tint*.22,.53+p.tint*.3);im.setColorAt(i,color);}im.computeBoundingSphere();im.boundingSphere.radius+=1;this.group.add(im);this.chunks.push({mesh:im,count:ps.length,x:ps.reduce((a,p)=>a+p.x,0)/ps.length,z:ps.reduce((a,p)=>a+p.z,0)/ps.length});}
+ // Low rounded shrubs and coastal flowers use actual volume, not flat ground decals.
+ const shrubMat=materials.get('shrubs',0x536542,{roughness:.98}),shrubGroup=new T.Group();for(let j=0;j<5;j++){const l=mesh(shrubGroup,new T.SphereGeometry(1,8,5),shrubMat,Math.sin(j*2.4)*.43,j*.1,Math.cos(j*2.4)*.4);l.scale.set(.65,.65,.65);}batchStatic(shrubGroup);const shrubGeom=shrubGroup.children[0].geometry;const shrubPoints=points.filter((p,i)=>i%31===0);const shrubs=new T.InstancedMesh(shrubGeom,shrubMat,shrubPoints.length);for(let i=0;i<shrubPoints.length;i++){const p=shrubPoints[i];object.position.set(p.x,p.y+.25,p.z);object.scale.set(.45*p.scale,.30*p.scale,.5*p.scale);object.rotation.set(.1,p.angle,.1);object.updateMatrix();shrubs.setMatrixAt(i,object.matrix);}shrubs.castShadow=shrubs.receiveShadow=true;shrubs.computeBoundingSphere();this.group.add(shrubs);this.shrubs=shrubs;
+ const flowerMat=materials.get('flowers',0xe0d3a5,{roughness:.8}),flowerGroup=new T.Group();for(let i=0;i<5;i++){const petal=mesh(flowerGroup,new T.SphereGeometry(1,6,4),flowerMat,Math.sin(i*1.256)*.055,.42,Math.cos(i*1.256)*.055);petal.scale.set(.045,.015,.055);}batchStatic(flowerGroup);this.flowerGeometry=flowerGroup.children[0].geometry;const fs=points.filter((p,i)=>i%17===0),flowers=new T.InstancedMesh(this.flowerGeometry,flowerMat,fs.length);for(let i=0;i<fs.length;i++){const p=fs[i];object.position.set(p.x,p.y,p.z);object.scale.setScalar(p.scale);object.rotation.set(0,p.angle,0);object.updateMatrix();flowers.setMatrixAt(i,object.matrix);}flowers.computeBoundingSphere();flowers.receiveShadow=true;this.group.add(flowers);this.flowers=flowers;
+ this.totalTufts=points.length;
+ }
+ setQuality(q){this.quality=q;this.timer=0;}
+ update(dt,time,camera){this.time.value=time;this.timer-=dt;if(this.timer>0)return;this.timer=.25;const max=this.quality==='Baixa'?100:this.quality==='Alta'?200:155,base=this.quality==='Baixa'?.3:this.quality==='Alta'?1:.68;
+ for(const c of this.chunks){const d=Math.hypot(c.x-camera.position.x,c.z-camera.position.z),density=base*Math.max(0,Math.min(1,(max-d)/(max-40)));c.mesh.count=Math.floor(c.count*density);c.mesh.visible=c.mesh.count>0;}this.flowers.visible=this.quality!=='Baixa';}
+ dispose(){this.group.traverse(o=>{if(o.isInstancedMesh)o.dispose();});this.group.removeFromParent();this.grassGeometry.dispose();this.flowerGeometry.dispose();this.shrubs.geometry.dispose();}
+}
