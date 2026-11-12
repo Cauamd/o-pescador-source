@@ -6,8 +6,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
-    "start": "node scripts/serve.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "build": "node -e \"process.chdir(process.env.INIT_CWD||'.');import('node:url').then(u=>import(u.pathToFileURL('scripts/build.mjs')))\"",
+    "start": "node -e \"process.chdir(process.env.INIT_CWD||'.');import('node:url').then(u=>import(u.pathToFileURL('scripts/serve.mjs')))\"",
+    "test": "node -e \"process.chdir(process.env.INIT_CWD||'.');import('node:child_process').then(c=>c.execFileSync(process.execPath,['--test','tests/systems.test.mjs','tests/ocean.test.mjs','tests/models.test.mjs'],{stdio:'inherit'}))\""
   }
 }

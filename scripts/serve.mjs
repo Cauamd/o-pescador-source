@@ -1,3 +1,4 @@
+
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -61,7 +62,8 @@ export function createStaticServer(rootDir = fileURLToPath(new URL('../dist', im
 
       const ext = extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      const cacheControl = ext === '.html' ? 'no-cache' : 'public, max-age=3600';
+      const isStaticAsset = pathname.startsWith('/assets/') || pathname.startsWith('/vendor/');
+      const cacheControl = isStaticAsset ? 'public, max-age=3600' : 'no-store, no-cache, must-revalidate';
 
       res.writeHead(200, {
         'Content-Type': contentType,
@@ -92,11 +94,20 @@ export function createStaticServer(rootDir = fileURLToPath(new URL('../dist', im
   });
 }
 
-const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+const isMain = !process.env.NO_AUTO_LISTEN;
 if (isMain) {
   const port = Number(process.env.PORT) || 8080;
   const host = process.env.HOST || '0.0.0.0';
   const server = createStaticServer();
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`A porta ${port} já está em uso. Feche o outro servidor ou rode com outra porta, ex.: $env:PORT=3000; node scripts/serve.mjs`);
+    } else {
+      console.error(err);
+    }
+    process.exit(1);
+  });
 
   server.listen(port, host, () => {
     console.log(`Servidor iniciado em http://${host}:${port}`);

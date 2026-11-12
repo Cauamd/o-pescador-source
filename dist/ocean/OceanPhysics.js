@@ -81,7 +81,7 @@ export class BoatFloat {
     for(let i=0;i<5;i++){const [lx,lz]=this.offsets[i];this.physics.sampleOceanSurface(x+c*lx+s*lz,z-s*lx+c*lz,time,a[i]);}
     const pitch=clamp(Math.atan2(a[1].height-a[2].height,5.5),-.28,.28);
     const roll=clamp(Math.atan2(a[4].height-a[3].height,2.8),-.28,.28);
-    const y=(a[0].height*2+a[1].height+a[2].height+a[3].height+a[4].height)/6+.12;
+    const y=(a[0].height*2+a[1].height+a[2].height+a[3].height+a[4].height)/6+.24;
     const blend=this.initialized?1-Math.exp(-dt*7):1,p=this.pose;this.initialized=true;
     p.y+=(y-p.y)*blend;p.pitch+=(pitch-p.pitch)*blend;p.roll+=(roll-p.roll)*blend;
     // Keep deck freeboard >= 0.18 m at the sampled hull points, even during a steep crest.
